@@ -19,6 +19,7 @@ def load_and_clean(path):
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
     text = re.sub(r"\s+", " ", text)
+    #print(f"Text: {text}")
     return text
 
 def split_10k_sections(text):
@@ -49,11 +50,36 @@ def save_sections(filtered, company="AAPL", year="2024"):
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
 
+def extract_year_from_folder(folder_name):
+    """Extract 2-digit year from folder like 0000320193-20-000096 → returns 2020"""
+    match = re.search(r"-(\d{2})-", folder_name)
+    if match:
+        yr = int(match.group(1))
+        return f"20{yr:02d}"  # convert 20 → 2020, 21 → 2021, etc.
+    return "unknown"
+
+def process_10k_filings(company):
+    dir = f"./sec-edgar-filings/{company}/10-K"
+
+    if not os.path.exists(dir):
+        raise FileNotFoundError(f"Directory {dir} does not exist")
+        return
+    
+    for sub_dir in os.listdir(dir):
+        sub_path = os.path.join(dir, sub_dir)
+        if os.path.isdir(sub_path):
+            year = extract_year_from_folder(sub_dir)
+            file_path = os.path.join(sub_path, "full-submission.txt")
+            print(f"Processing {company} {year} {file_path}")
+            if os.path.exists(file_path):
+                text = load_and_clean(file_path)
+                sections = split_10k_sections(text)
+                filtered = filter_sections(sections)
+                save_sections(filtered, company=company, year=year)
+            else:
+                print(f"File {file_path} does not exist")
+    print(f"Processed {company} 10-K filings and saved to sections folder")
 
 if __name__ == '__main__':
     #./sec-edgar-filings/AAPL/10-K/0000320193-20-000096/full-submission.txt
-    path = "./sec-edgar-filings/AAPL/10-K/0000320193-20-000096/full-submission.txt"
-    text = load_and_clean(path)
-    sections = split_10k_sections(text)
-    filtered = filter_sections(sections)
-    save_sections(filtered, company="AAPL", year="2024")
+    process_10k_filings("AAPL")
