@@ -35,19 +35,8 @@ def chunk_text(text, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
     )
     return splitter.split_text(text)
 
-# def verify_chroma_db():
-#     client = Client()
-#     collection = client.get_collection("sec_10k_filings")
 
-#     query = "What are Apple's major risk factors mentioned?"
-#     results = collection.query(query_texts=[query], n_results=5)
-
-#     for doc in results["documents"][0]:
-#         print("----")
-#         print(doc[:500])
-
-
-def main():
+def build_collection():
     print("Loading extracted 10-K text files...")
     docs = load_text_files(EXTRACTED_DIR)
     print(f"Found {len(docs)} files.\n")
@@ -78,17 +67,19 @@ def main():
             )
 
     print(f"Successfully stored {collection.count()} chunks in ChromaDB!")
-    print(f"Database persisted at: {DB_DIR}")
+    #print(f"Database persisted at: {DB_DIR}")
 
-    query = "What are Apple's major risk factors mentioned?"
-    results = collection.query(query_texts=[query], n_results=5)
+    #query = "What are Apple's major risk factors mentioned?"
+    #results = collection.query(query_texts=[query], n_results=5)
 
     # for doc in results["documents"][0]:
     #     print("----")
     #     print(doc[:500])
+    return collection, embedder
 
 
 if __name__ == "__main__":
-    main()
+    #main()
+    build_collection()
     #load_text_files(EXTRACTED_DIR)
     #verify_chroma_db()
