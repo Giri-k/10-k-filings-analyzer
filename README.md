@@ -1,3 +1,14 @@
+---
+title: 10-K Filings Analyzer
+emoji: chart_with_upwards_trend
+colorFrom: blue
+colorTo: slate
+sdk: gradio
+sdk_version: "5.34.2"
+app_file: app.py
+pinned: false
+---
+
 # 10-K Filings Analyzer
 
 A Retrieval-Augmented Generation (RAG) application for analyzing SEC 10-K filings. Given a stock ticker, the system downloads filings from SEC EDGAR, chunks and embeds the full documents, and answers financial questions using hybrid retrieval, cross-encoder reranking, and LLM-powered generation via Ollama.
