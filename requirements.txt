@@ -2,7 +2,7 @@ sec-edgar-downloader
 beautifulsoup4
 chromadb
 sentence-transformers
-langchain
+langchain-text-splitters
 rank_bm25
 requests
 numpy
