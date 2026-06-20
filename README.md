@@ -1,8 +1,8 @@
 ---
 title: 10-K Filings Analyzer
-emoji: chart_with_upwards_trend
+emoji: 📊
 colorFrom: blue
-colorTo: slate
+colorTo: indigo
 sdk: gradio
 sdk_version: "5.34.2"
 app_file: app.py
