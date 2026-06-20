@@ -1,28 +1,23 @@
 import numpy as np
+import requests
 from vectordb import build_collection
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from sentence_transformers import CrossEncoder
-import torch
 from downloader import download
 from extractor import process_10k_filings, CLEANED_DIR
 import os
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME = "google/flan-t5-large"
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "llama3.1"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-_model = None
-_tokenizer = None
 _reranker = None
 
 
-def _load_models():
-    global _model, _tokenizer, _reranker
-    if _model is not None:
+def _load_reranker():
+    global _reranker
+    if _reranker is not None:
         return
-    print("Loading generation model and reranker...")
-    _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    _model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(DEVICE)
+    print("Loading reranker...")
     _reranker = CrossEncoder(RERANKER_MODEL)
 
 
@@ -66,7 +61,7 @@ def retrieve_chunks(query, collection, embedder, bm25_index,
     return top_docs, top_metas
 
 
-def generate_insights(query, context, max_len=512):
+def generate_insights(query, context):
     prompt = f"""You are a financial analyst.
 Based on the following 10-K excerpts, answer the question below
 and highlight key risks, trends, or insights.
@@ -82,15 +77,13 @@ Provide a structured and concise summary:
 - Observations
 - Any Red Flags or Year-to-Year Changes
 """
-    inputs = _tokenizer(prompt, return_tensors="pt", truncation=True,
-                        max_length=1024).to(DEVICE)
-    with torch.no_grad():
-        outputs = _model.generate(
-            **inputs,
-            max_new_tokens=max_len,
-            num_beams=4,
-        )
-    return _tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response = requests.post(OLLAMA_URL, json={
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+    })
+    response.raise_for_status()
+    return response.json()["response"]
 
 
 def call_agent(symbol, query):
@@ -108,13 +101,14 @@ def call_agent(symbol, query):
         process_10k_filings(symbol)
 
     collection, embedder, bm25_index, chunks, metas = build_collection(symbol)
-    _load_models()
+    _load_reranker()
 
     print("Retrieving (hybrid BM25 + dense) and reranking chunks...")
     context, meta = retrieve_chunks(
         query, collection, embedder, bm25_index, chunks, metas, symbol
     )
 
+    print("Generating insights via Ollama...")
     insights = generate_insights(query, "\n\n".join(context))
     print(insights)
     return insights
