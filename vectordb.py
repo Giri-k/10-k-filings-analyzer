@@ -1,13 +1,16 @@
 import os
 import re
 import uuid
+import pickle
 from tqdm import tqdm
 from chromadb import PersistentClient
 from sentence_transformers import SentenceTransformer
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from rank_bm25 import BM25Okapi
 
 CLEANED_DIR = "./cleaned_filings"
 DB_DIR = "./chroma_db"
+CACHE_DIR = "./bm25_cache"
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 EMBED_MODEL = "all-MiniLM-L6-v2"
@@ -57,21 +60,46 @@ def assign_sections(chunks):
     return results
 
 
+def _save_chunks_cache(company, chunks, metas):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    path = os.path.join(CACHE_DIR, f"{company}.pkl")
+    with open(path, "wb") as f:
+        pickle.dump({"chunks": chunks, "metas": metas}, f)
+
+
+def _load_chunks_cache(company):
+    path = os.path.join(CACHE_DIR, f"{company}.pkl")
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return None
+
+
+def _build_bm25(chunks):
+    tokenized = [chunk.lower().split() for chunk in chunks]
+    return BM25Okapi(tokenized)
+
+
 def build_collection(company):
     embedder = get_embedder()
 
     client = PersistentClient(path=DB_DIR)
     collection = client.get_or_create_collection(name=COLLECTION_NAME)
 
+    cached = _load_chunks_cache(company)
     existing = collection.get(where={"company": company}, limit=1)
-    if existing and existing["ids"]:
+
+    if existing and existing["ids"] and cached:
         print(f"{company} already indexed ({collection.count()} total chunks)")
-        return collection, embedder
+        all_chunks = cached["chunks"]
+        all_metas = cached["metas"]
+        bm25_index = _build_bm25(all_chunks)
+        return collection, embedder, bm25_index, all_chunks, all_metas
 
     docs = load_text_files(company)
     if not docs:
         print(f"No cleaned filings found for {company} in {CLEANED_DIR}/")
-        return collection, embedder
+        return collection, embedder, None, [], []
 
     print(f"Found {len(docs)} filings for {company}. Chunking...")
 
@@ -101,8 +129,11 @@ def build_collection(company):
             ids=[str(uuid.uuid4()) for _ in range(end - i)],
         )
 
+    _save_chunks_cache(company, all_chunks, all_metas)
+    bm25_index = _build_bm25(all_chunks)
+
     print(f"Stored {collection.count()} total chunks in ChromaDB ({DB_DIR}/)")
-    return collection, embedder
+    return collection, embedder, bm25_index, all_chunks, all_metas
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import numpy as np
 from vectordb import build_collection
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from sentence_transformers import CrossEncoder
@@ -25,22 +26,43 @@ def _load_models():
     _reranker = CrossEncoder(RERANKER_MODEL)
 
 
-def retrieve_chunks(query, collection, embedder, company, top_k=5, candidates=20):
+def retrieve_chunks(query, collection, embedder, bm25_index,
+                    all_chunks, all_metas, company,
+                    top_k=5, candidates=20):
+    # Dense retrieval via ChromaDB
     query_emb = embedder.encode([query])
-    results = collection.query(
+    dense_results = collection.query(
         query_embeddings=query_emb,
         n_results=candidates,
         where={"company": company},
     )
-    docs = results["documents"][0]
-    metas = results["metadatas"][0]
+    dense_docs = dense_results["documents"][0]
+    dense_metas = dense_results["metadatas"][0]
 
-    pairs = [[query, doc] for doc in docs]
+    # Sparse retrieval via BM25
+    bm25_scores = bm25_index.get_scores(query.lower().split())
+    bm25_top_idx = np.argsort(bm25_scores)[::-1][:candidates]
+
+    # Merge candidates (dense first, then BM25 additions)
+    seen = set()
+    merged = []
+    for doc, meta in zip(dense_docs, dense_metas):
+        if doc not in seen:
+            seen.add(doc)
+            merged.append((doc, meta))
+    for idx in bm25_top_idx:
+        doc = all_chunks[idx]
+        if doc not in seen:
+            seen.add(doc)
+            merged.append((doc, all_metas[idx]))
+
+    # Rerank all candidates with cross-encoder
+    pairs = [[query, doc] for doc, _ in merged]
     scores = _reranker.predict(pairs)
-    ranked = sorted(zip(docs, metas, scores), key=lambda x: x[2], reverse=True)
+    ranked = sorted(zip(merged, scores), key=lambda x: x[1], reverse=True)
 
-    top_docs = [doc for doc, _, _ in ranked[:top_k]]
-    top_metas = [meta for _, meta, _ in ranked[:top_k]]
+    top_docs = [doc for (doc, _), _ in ranked[:top_k]]
+    top_metas = [meta for (_, meta), _ in ranked[:top_k]]
     return top_docs, top_metas
 
 
@@ -85,11 +107,13 @@ def call_agent(symbol, query):
         print("Cleaning filings...")
         process_10k_filings(symbol)
 
-    collection, embedder = build_collection(symbol)
+    collection, embedder, bm25_index, chunks, metas = build_collection(symbol)
     _load_models()
 
-    print("Retrieving and reranking chunks...")
-    context, metas = retrieve_chunks(query, collection, embedder, symbol)
+    print("Retrieving (hybrid BM25 + dense) and reranking chunks...")
+    context, meta = retrieve_chunks(
+        query, collection, embedder, bm25_index, chunks, metas, symbol
+    )
 
     insights = generate_insights(query, "\n\n".join(context))
     print(insights)
