@@ -1,85 +1,124 @@
-from sre_parse import Tokenizer
+import numpy as np
 from vectordb import build_collection
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
+from sentence_transformers import CrossEncoder
 import torch
 from downloader import download
-from extractor import process_10k_filings
+from extractor import process_10k_filings, CLEANED_DIR
 import os
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_NAME = "google/flan-t5-large"     # or "facebook/bart-large-cnn"
+MODEL_NAME = "google/flan-t5-large"
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
-def retrieve_chunks(query, collection, embedder, top_k=5):
+_model = None
+_tokenizer = None
+_reranker = None
+
+
+def _load_models():
+    global _model, _tokenizer, _reranker
+    if _model is not None:
+        return
+    print("Loading generation model and reranker...")
+    _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    _model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(DEVICE)
+    _reranker = CrossEncoder(RERANKER_MODEL)
+
+
+def retrieve_chunks(query, collection, embedder, bm25_index,
+                    all_chunks, all_metas, company,
+                    top_k=5, candidates=20):
+    # Dense retrieval via ChromaDB
     query_emb = embedder.encode([query])
-    results = collection.query(query_embeddings=query_emb, n_results=top_k)
-    docs = results["documents"][0]
-    metas = results["metadatas"][0]
-    return docs, metas
+    dense_results = collection.query(
+        query_embeddings=query_emb,
+        n_results=candidates,
+        where={"company": company},
+    )
+    dense_docs = dense_results["documents"][0]
+    dense_metas = dense_results["metadatas"][0]
 
-def generate_insights(query, context, model, tokenizer, max_len=512):
-    """Use a Hugging Face model to summarize or reason over the retrieved context."""
-    prompt = f"""
-    You are a financial analyst.
-    Based on the following 10-K excerpts, answer the question below
-    and highlight key risks, trends, or insights.
+    # Sparse retrieval via BM25
+    bm25_scores = bm25_index.get_scores(query.lower().split())
+    bm25_top_idx = np.argsort(bm25_scores)[::-1][:candidates]
 
-    ---CONTEXT---
-    {context}
+    # Merge candidates (dense first, then BM25 additions)
+    seen = set()
+    merged = []
+    for doc, meta in zip(dense_docs, dense_metas):
+        if doc not in seen:
+            seen.add(doc)
+            merged.append((doc, meta))
+    for idx in bm25_top_idx:
+        doc = all_chunks[idx]
+        if doc not in seen:
+            seen.add(doc)
+            merged.append((doc, all_metas[idx]))
 
-    ---QUESTION---
-    {query}
+    # Rerank all candidates with cross-encoder
+    pairs = [[query, doc] for doc, _ in merged]
+    scores = _reranker.predict(pairs)
+    ranked = sorted(zip(merged, scores), key=lambda x: x[1], reverse=True)
 
-    Provide a structured and concise summary:
-    - Key Points
-    - Observations
-    - Any Red Flags or Year-to-Year Changes
-    """
+    top_docs = [doc for (doc, _), _ in ranked[:top_k]]
+    top_metas = [meta for (_, meta), _ in ranked[:top_k]]
+    return top_docs, top_metas
 
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True,
-                       max_length=1024).to(DEVICE)
 
+def generate_insights(query, context, max_len=512):
+    prompt = f"""You are a financial analyst.
+Based on the following 10-K excerpts, answer the question below
+and highlight key risks, trends, or insights.
+
+---CONTEXT---
+{context}
+
+---QUESTION---
+{query}
+
+Provide a structured and concise summary:
+- Key Points
+- Observations
+- Any Red Flags or Year-to-Year Changes
+"""
+    inputs = _tokenizer(prompt, return_tensors="pt", truncation=True,
+                        max_length=1024).to(DEVICE)
     with torch.no_grad():
-        outputs = model.generate(
+        outputs = _model.generate(
             **inputs,
             max_new_tokens=max_len,
             num_beams=4,
-            temperature=0.4,
         )
-
-    return tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return _tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 
 def call_agent(symbol, query):
-
     filings_dir = f"./sec-edgar-filings/{symbol}/10-K"
-    sections_dir = "./sections"
 
     if not os.path.exists(filings_dir):
-        print("downloading 10-K filings...")
+        print("Downloading 10-K filings...")
         download(symbol)
-        process_10k_filings(symbol)
-    else:
-        print("10-K filings already downloaded")
-    
-    collection, embedder = build_collection()  # load or rebuild your DB
-    
-    global _model, _tokenizer
-    if "_model" not in globals() or "_tokenizer" not in globals():
-        print("Loading Hugging Face model...")
-        _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        _model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(DEVICE)
-    else:
-        print("Using cached Hugging Face model...")
-    
-    print("retrieving chunks...")
-    context, metas = retrieve_chunks(query, collection, embedder)
-    print("chunks retrieved")
 
-    insights = generate_insights(query, context, _model, _tokenizer)
+    has_cleaned = os.path.exists(CLEANED_DIR) and any(
+        f.startswith(symbol) for f in os.listdir(CLEANED_DIR)
+    )
+    if not has_cleaned:
+        print("Cleaning filings...")
+        process_10k_filings(symbol)
+
+    collection, embedder, bm25_index, chunks, metas = build_collection(symbol)
+    _load_models()
+
+    print("Retrieving (hybrid BM25 + dense) and reranking chunks...")
+    context, meta = retrieve_chunks(
+        query, collection, embedder, bm25_index, chunks, metas, symbol
+    )
+
+    insights = generate_insights(query, "\n\n".join(context))
     print(insights)
     return insights
+
 
 if __name__ == "__main__":
     call_agent("AAPL", "What are Apple's major risk factors mentioned?")
