@@ -1,0 +1,11 @@
+sec-edgar-downloader
+beautifulsoup4
+chromadb
+sentence-transformers
+langchain-text-splitters
+rank_bm25
+requests
+numpy
+gradio
+tqdm
+huggingface_hub
