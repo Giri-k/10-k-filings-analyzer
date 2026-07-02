@@ -21,7 +21,7 @@ MAX_STEPS = 6
 _reranker = None
 _index_cache = {}
 
-SYSTEM_PROMPT = """You are a financial analyst assistant with access to SEC 10-K annual filings.
+SYSTEM_PROMPT = """You are a financial analyst assistant that answers questions about SEC 10-K annual filings.
 
 You have the following tool:
 
@@ -38,12 +38,16 @@ Action Input: {"ticker": "<TICKER>", "query": "<search query>"}
 When you have enough information, respond with:
 
 Thought: <your reasoning>
-Final Answer: <your structured answer with headers, bullet points, and insights>
+Final Answer: <your answer>
 
-Rules:
-- Always search before answering. Never make up financial information.
+CRITICAL RULES:
+- Always search before answering.
+- Base your Final Answer ONLY on information from the search results. Do NOT add facts, figures, or claims from your own knowledge.
+- If the search results do not contain enough information to fully answer the question, explicitly state what is missing rather than filling gaps with assumptions.
+- Reference the source of each claim (company, year, section) so the user can verify it.
+- Use bullet points or numbered lists in your Final Answer. Each point should correspond to specific content from the search results.
 - For comparison questions, search each company separately.
-- You can call the tool multiple times.
+- You can call the tool multiple times with different queries to gather comprehensive information.
 - Keep your Thought concise (1-2 sentences).
 """
 
@@ -61,7 +65,7 @@ def _call_llm(messages):
         client = InferenceClient(
             model=HF_MODEL, token=os.environ.get("HF_TOKEN")
         )
-        resp = client.chat_completion(messages=messages, max_tokens=1024)
+        resp = client.chat_completion(messages=messages, max_tokens=2048)
         return resp.choices[0].message.content
     else:
         resp = requests.post(f"{OLLAMA_BASE}/api/chat", json={
@@ -167,12 +171,20 @@ def _execute_search(ticker, search_query):
         search_query, collection, embedder, bm25_index, chunks, metas, ticker
     )
 
-    results = []
-    for doc, meta in zip(docs, doc_metas):
-        header = f"[{meta.get('company', ticker)} {meta.get('year', '?')} - {meta.get('section', '?')}]"
-        results.append(f"{header}\n{doc[:600]}")
+    if not docs:
+        return f"No relevant results found for {ticker}."
 
-    return "\n\n---\n\n".join(results) if results else f"No relevant results found for {ticker}."
+    results = []
+    for i, (doc, meta) in enumerate(zip(docs, doc_metas), 1):
+        header = f"[Source {i}: {meta.get('company', ticker)} {meta.get('year', '?')} - {meta.get('section', '?')}]"
+        results.append(f"{header}\n{doc}")
+
+    context_block = "\n\n---\n\n".join(results)
+    return (
+        f"Search results for \"{search_query}\" in {ticker} filings:\n\n"
+        f"{context_block}\n\n"
+        "Base your answer ONLY on the search results above."
+    )
 
 
 def _parse_action(text):
@@ -248,7 +260,14 @@ def call_agent(symbol, query):
 
     messages.append({
         "role": "user",
-        "content": "Provide your Final Answer now based on all the information gathered.",
+        "content": (
+            "You have completed your research. Provide your Final Answer now.\n\n"
+            "IMPORTANT: Your answer must be based ONLY on the search results above. "
+            "Do not add any information from your own knowledge. "
+            "Use bullet points and reference the source (company, year, section) for each claim. "
+            "If the search results did not contain enough information to fully answer the question, "
+            "explicitly state what could not be determined from the available filings."
+        ),
     })
 
     yield "Generating final answer...", output
