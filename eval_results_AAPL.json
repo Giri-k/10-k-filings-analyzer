@@ -1,0 +1,93 @@
+{
+  "ticker": "AAPL",
+  "model": "llama3.1",
+  "num_queries": 10,
+  "averages": {
+    "faithfulness": 0.6061904761904763,
+    "answer_relevancy": 0.2948397643611766,
+    "context_precision": 0.8887499999817813,
+    "context_utilization": 0.8887499999817813
+  },
+  "per_query": [
+    {
+      "query": "What are the company's major risk factors?",
+      "answer_preview": "Based on the provided 10-K excerpts, here are the company's major risk factors:\n\n\u2022 **Global and regi",
+      "faithfulness": 0.5,
+      "answer_relevancy": 0.9878702127625479,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What does management discuss about revenue trends?",
+      "answer_preview": "Here are the points discussing revenue trends based on the provided 10-K excerpts:\n\n\u2022 **Revenue reco",
+      "faithfulness": 0.75,
+      "answer_relevancy": 0.43635378702252486,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What are the key supply chain risks?",
+      "answer_preview": "Here are the key supply chain risks based solely on the provided 10-K excerpts:\n\n* Disruptions due t",
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What does the company say about competition?",
+      "answer_preview": "Here are the company's statements about competition:\n\n* **Competition is intense and will intensify*",
+      "faithfulness": 0.375,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What are the main regulatory risks?",
+      "answer_preview": "Here are the main regulatory risks:\n\n* **Increased costs and potential liability and fines**: New an",
+      "faithfulness": 0.875,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What does the company report about research and development?",
+      "answer_preview": "Here are the findings:\n\n\u2022 **Importance of R&D**: The company's ability to compete successfully depen",
+      "faithfulness": 0.8333333333333334,
+      "answer_relevancy": 0.44033252215550495,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What are the significant legal proceedings?",
+      "answer_preview": "Here are the significant legal proceedings mentioned in the 10-K excerpts:\n\n* Patent claims relating",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What does management say about future outlook?",
+      "answer_preview": "Here's what management says about the future outlook:\n\n* The potential future impact of the COVID-19",
+      "faithfulness": 0.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_utilization": 0.0
+    },
+    {
+      "query": "What are the cybersecurity and data privacy risks?",
+      "answer_preview": "Here are the cybersecurity and data privacy risks based on the provided 10-K excerpts:\n\n* The risk o",
+      "faithfulness": 0.8,
+      "answer_relevancy": 0.7890013573100116,
+      "context_precision": 0.99999999998,
+      "context_utilization": 0.99999999998
+    },
+    {
+      "query": "What are the company's debt and liquidity positions?",
+      "answer_preview": "Here are the company's debt and liquidity positions based solely on the provided 10-K excerpts:\n\n**D",
+      "faithfulness": 0.9285714285714286,
+      "answer_relevancy": null,
+      "context_precision": 0.8874999999778125,
+      "context_utilization": 0.8874999999778125
+    }
+  ]
+}

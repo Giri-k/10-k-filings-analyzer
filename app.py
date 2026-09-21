@@ -54,7 +54,7 @@ with gr.Blocks(
                         ["AAPL", "What are Apple's major risk factors?"],
                         ["AAPL", "What does management discuss about future outlook?"],
                         ["MSFT", "What are the key financial trends?"],
-                        ["GOOGL", "What does the company say about competition?"],
+                        ["", "Compare risk factors between AAPL and MSFT"],
                     ],
                     inputs=[symbol, query],
                 )
